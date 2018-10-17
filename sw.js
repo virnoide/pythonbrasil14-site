@@ -1,4 +1,4 @@
-importScripts("/precache-manifest.f97967c8d3692353d7db9d48f0e1108b.js", "https://storage.googleapis.com/workbox-cdn/releases/3.2.0/workbox-sw.js");
+importScripts("/precache-manifest.23211cbc0b1a8b57bc62b0b7382761d1.js", "https://storage.googleapis.com/workbox-cdn/releases/3.2.0/workbox-sw.js");
 
 const CACHE_VERSION = 'v10';
 const initialCache = [
@@ -10,7 +10,12 @@ const initialCache = [
 .concat(self.__precacheManifest.map(item => item.url))
 .map(url => new Request(url, { redirect: 'follow' }));
 
-const isFileResource = /(\.[a-z]*$)/;
+const isAsset = url => url.match(/(\/assets\/.*$|fonts\.(googleapis|gstatic))|\.css$|\.js$/);
+const isDocument = url => url.match(/\/documents\//);
+const isGoogleResource = url => url.match(/fonts|google/);
+const isTemplate = url =>
+  !isDocument(url) && !isAsset(url) && !isGoogleResource(url)
+  && !url.endsWith('/') && !url.endsWith('.json');
 
 function onInstall(event) {
   console.log('Service Worker registered');
@@ -26,12 +31,10 @@ self.addEventListener('install', onInstall);
 function onFetch(event) {
   event.respondWith(
     caches.open(CACHE_VERSION).then(cache => {
-      if (!event.request.url.endsWith('bundle.js')) {
-        if (event.request.url.match(isFileResource) || event.request.url.includes('fonts')) {
+      if (isAsset(event.request.url)) {
           return retrieveFromCache({ event, cache })
             .catch(fetchAndCache)
         }
-      }
       return fetchAndCache({ event, cache })
         .catch((() => retrieveFromCache({ event, cache })));
     })
@@ -41,7 +44,7 @@ function onFetch(event) {
 function fetchAndCache({ event, cache }) {
   console.log(`Adding resource ${event.request.url} to the cache.`);
   let url = event.request.url;
-  if (!url.match(isFileResource) && !url.endsWith('/') && !url.includes('google') && !event.request.url.includes('fonts')) {
+  if (isTemplate(url)) {
     url = url.concat('/');
   }
   const request = new Request(
@@ -60,7 +63,17 @@ function fetchAndCache({ event, cache }) {
 }
 
 function retrieveFromCache({ event, cache }) {
-  return cache.match(event.request).then(request => {
+  let request = event.request;
+  if (isTemplate(event.request.url)) {
+    const url = event.request.url + '/';
+
+    request = new Request(
+      url,
+      {credentials: !url.includes('fonts') ? event.request.credentials : 'omit', redirect: 'follow' }
+    );
+  }
+
+  return cache.match(request).then(request => {
     if (request) {
       console.log(`Resource ${request.url} retrieved from cache`);
       return request;
